@@ -32,11 +32,14 @@ class VideoService:
         center_crop = gray[start_y:start_y+crop_h, start_x:start_x+crop_w]
         center_score = cv2.Laplacian(center_crop, cv2.CV_64F).var()
         
-        # 5. Return the maximum of global vs center to catch either scenario
-        # We value center sharpness slightly more? No, just max is good.
-        # If background is blurry but person is sharp (Center high, Global low) -> High Score
-        # If everything is sharp (landscape) -> High Score
-        return max(global_score, center_score)
+        # 5. Calculate Weighted Score
+        # Problem: If we use max(), a sharp background (static) always wins even if the subject (center) is blurry.
+        # Solution: Use Weighted Average. 
+        # heavily weight the center (subject) so that if they are blurry, the score drops.
+        # 70% Center, 30% Global.
+        final_score = (0.7 * center_score) + (0.3 * global_score)
+        
+        return final_score
 
     def analyze_video(self, video_path, min_distance=15):
         """
