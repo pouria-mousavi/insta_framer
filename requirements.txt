@@ -1,0 +1,9 @@
+python-telegram-bot
+instaloader
+opencv-python-headless
+numpy
+python-dotenv
+yt-dlp
+flask
+gunicorn
+

@@ -1,0 +1,17 @@
+__pycache__/
+*.py[cod]
+*$py.class
+.env
+.venv
+env/
+venv/
+*.log
+bot.log
+temp_downloads/
+temp_downloads*
+debug_temp/
+cookies.txt
+session-*
+story_meta.json
+instagram_session
+.DS_Store
