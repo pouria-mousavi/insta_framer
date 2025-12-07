@@ -5,6 +5,8 @@ import logging
 from urllib.parse import urlparse
 from config import INSTAGRAM_USERNAME, INSTAGRAM_PASSWORD
 
+import base64
+
 class InstagramService:
     def __init__(self):
         self.loader = instaloader.Instaloader(
@@ -17,6 +19,20 @@ class InstagramService:
             compress_json=False
         )
         self.logged_in = False
+        
+        # --- Restore Cookies from Env (for Render) ---
+        cookies_b64 = os.environ.get('COOKIES_B64')
+        if cookies_b64:
+            try:
+                logging.info("Found COOKIES_B64 env var. Restoring cookies.txt...")
+                cookie_data = base64.b64decode(cookies_b64)
+                with open("cookies.txt", "wb") as f:
+                    f.write(cookie_data)
+                logging.info("cookies.txt restored successfully.")
+                self.logged_in = True # Assume these cookies are valid to start with
+            except Exception as e:
+                logging.error(f"Failed to decode COOKIES_B64: {e}")
+        # ---------------------------------------------
 
     def login(self):
         if self.logged_in:
