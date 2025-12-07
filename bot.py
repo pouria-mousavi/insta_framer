@@ -2,6 +2,8 @@ import logging
 import os
 import shutil
 import uuid
+import time
+import threading
 from telegram import Update, InputMediaPhoto, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaDocument
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler, CallbackQueryHandler, filters
 from config import BOT_TOKEN
@@ -26,6 +28,39 @@ insta = InstagramService()
 video_processor = VideoService()
 
 PAGE_SIZE = 10
+
+# --- Cleanup Logic ---
+def cleanup_loop():
+    """Periodically cleans up old temp files to save disk space on Render."""
+    TEMP_DIR = "temp_downloads"
+    MAX_AGE_SECONDS = 600 # 10 minutes
+    
+    while True:
+        try:
+            if os.path.exists(TEMP_DIR):
+                current_time = time.time()
+                for item in os.listdir(TEMP_DIR):
+                    item_path = os.path.join(TEMP_DIR, item)
+                    # Check if it's a directory (request ID)
+                    if os.path.isdir(item_path):
+                        # Get modification time
+                        mtime = os.path.getmtime(item_path)
+                        if current_time - mtime > MAX_AGE_SECONDS:
+                            try:
+                                shutil.rmtree(item_path)
+                                logging.info(f"Cleaned up old temp dir: {item}")
+                            except Exception as e:
+                                logging.error(f"Failed to delete {item}: {e}")
+            
+            time.sleep(300) # Check every 5 minutes
+        except Exception as e:
+            logging.error(f"Error in cleanup loop: {e}")
+            time.sleep(300)
+
+# Start cleanup thread
+cleanup_thread = threading.Thread(target=cleanup_loop, daemon=True)
+cleanup_thread.start()
+# ---------------------
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(
@@ -226,24 +261,21 @@ async def handle_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for file_path in selected_files:
             await context.bot.send_document(chat_id=chat_id, document=open(file_path, 'rb'))
             
-        # NOTE: We do NOT cleanup temp_dir here immediately if we want to allow selecting more from previous pages?
-        # Actually, usually user selects and is done. Or they might load more.
-        # If they load more, we overwrite displayed_frames. Can they select from previous pages?
-        # With this logic, they can only select from the *currently displayed* page (1-10).
-        # This is simple and effective. If they want previous ones, they can't go back easily with this UI, but simpler is better.
-        
-        # Ask if they are done? Or just keep session open?
-        # Let's keep session open but MAYBE clean up if they start new link.
-        # But we need auto cleanup eventually.
-        # For now, let's NOT clean up. We rely on new Request ID to create new dir.
-        # We can implement a /done command or just leave it. Temp dir will grow.
-        # Let's add a "Done" button or just say "Done".
-        
-        # Actually, standard flow: Select -> Get Files -> Done.
-        # If they want more, they would have clicked "Load More" INSTEAD of selecting?
-        # Or maybe they select 1, get it, then click Load More?
-        # Telegram buttons persist.
-        # So it's fine.
+        # Cleanup
+        # We rely on the periodic cleanup loop to handle this now for robustness
+        # But we can still cleanup here immediately to be nice
+        temp_dir = context.user_data.get('temp_dir')
+        if temp_dir and os.path.exists(temp_dir):
+            try:
+                shutil.rmtree(temp_dir)
+            except Exception as e:
+                logging.error(f"Cleanup error: {e}")
+            
+        # Reset state
+        context.user_data['awaiting_selection'] = False
+        context.user_data['frames'] = []
+        context.user_data['all_candidates'] = []
+        await context.bot.send_message(chat_id=chat_id, text="✅ Done! Send another link to start again.")
 
     except Exception as e:
         logging.error(f"Error handling selection: {e}")
