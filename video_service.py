@@ -3,6 +3,41 @@ import os
 import numpy as np
 
 class VideoService:
+    def get_blur_score(self, image):
+        """
+        Calculates sharpness score using Laplacian Variance.
+        Implements center-weighting to favor subject focus.
+        """
+        if image is None: 
+            return 0.0
+            
+        # 1. Convert to grayscale
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        
+        # 2. Apply slight Gaussian Blur to reduce noise (grain) which mimics sharpness
+        # This helps ignore high-ISO noise in dark videos
+        gray = cv2.GaussianBlur(gray, (3, 3), 0)
+        
+        # 3. Calculate Global Score (Whole Frame)
+        global_score = cv2.Laplacian(gray, cv2.CV_64F).var()
+        
+        # 4. Calculate Center Score (Subject Focus)
+        h, w = gray.shape
+        center_h, center_w = h // 2, w // 2
+        crop_h, crop_w = h // 2, w // 2 # 50% crop
+        
+        start_y = center_h - (crop_h // 2)
+        start_x = center_w - (crop_w // 2)
+        
+        center_crop = gray[start_y:start_y+crop_h, start_x:start_x+crop_w]
+        center_score = cv2.Laplacian(center_crop, cv2.CV_64F).var()
+        
+        # 5. Return the maximum of global vs center to catch either scenario
+        # We value center sharpness slightly more? No, just max is good.
+        # If background is blurry but person is sharp (Center high, Global low) -> High Score
+        # If everything is sharp (landscape) -> High Score
+        return max(global_score, center_score)
+
     def analyze_video(self, video_path, min_distance=15):
         """
         Analyzes the video and returns a list of candidate frames sorted by sharpness score.
@@ -20,9 +55,7 @@ class VideoService:
             if not success:
                 break
             
-            # Simple score: Variance of Laplacian
-            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            score = cv2.Laplacian(gray, cv2.CV_64F).var()
+            score = self.get_blur_score(frame)
             
             # Keep everything that isn't completely black/blank (threshold > 10)
             if score > 10.0:
